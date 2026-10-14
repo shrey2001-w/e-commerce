@@ -4,6 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { Bungee } from "next/font/google";
 import SignupModal from "./SignupModal";
+import LoginModal from "./LoginModal";
+import { useCart } from "../lib/cart";
+import { useUser, refreshUser, clearUser } from "../lib/user";
+import AddressModal from "./AddressModal";
+import { deliveryLabel } from "../lib/delivery";
 
 // Chunky display font that matches the "CITYMALL" wordmark
 const bungee = Bungee({ weight: "400", subsets: ["latin"] });
@@ -115,10 +120,29 @@ function CrownAvatar({ className = "" }: { className?: string }) {
 
 /* ---------- Header ---------- */
 
-export default function Header() {
+export default function Header({ compact = false }: { compact?: boolean }) {
   const [query, setQuery] = useState("");
   const [city] = useState("Gurgaon");
   const [showSignup, setShowSignup] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const { user } = useUser();
+  const [showAddress, setShowAddress] = useState(false);
+  const { count } = useCart();
+
+  const handleLogout = async () => {
+    await fetch("/api/logout", { method: "POST" });
+    clearUser();
+  };
+
+  const openLogin = () => {
+    setShowSignup(false);
+    setShowLogin(true);
+  };
+
+  const openSignup = () => {
+    setShowLogin(false);
+    setShowSignup(true);
+  };
 
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -176,8 +200,17 @@ export default function Header() {
               <span className="hidden lg:inline">Orders</span>
             </Link>
 
-            <Link href="/cart" className="text-gray-800 hover:text-red-600" aria-label="Cart">
+            <Link
+              href="/cart"
+              className="relative text-gray-800 hover:text-red-600"
+              aria-label={`Open cart, ${count} ${count === 1 ? "item" : "items"}`}
+            >
               <CartIcon className="h-8 w-8" />
+              {count > 0 && (
+                <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold leading-none text-white">
+                  {count > 99 ? "99+" : count}
+                </span>
+              )}
             </Link>
           </nav>
         </div>
@@ -186,40 +219,103 @@ export default function Header() {
         <div className="pb-3 md:hidden">{searchForm}</div>
       </div>
 
-      {/* ===== Row 2: location · login / sign up ===== */}
+      {/* ===== Row 2: delivery / location · auth buttons ===== */}
+      {!(compact && user) && (
       <div className="border-t border-gray-200">
-        <div className="mx-auto flex w-full max-w-[1280px] items-center justify-between gap-3 px-4 py-1.5 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            className="flex items-center gap-3 rounded-md py-1 text-[15px] text-gray-600 hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40"
-            aria-haspopup="listbox"
-          >
-            <CrownAvatar className="h-12 w-12 sm:h-[60px] sm:w-[60px]" />
-            <span className="flex items-center gap-1.5">
-              {city}
-              <ChevronDown className="h-4 w-4" />
-            </span>
-          </button>
-
-          <div className="flex items-center gap-2 sm:gap-3">
+        <div className="mx-auto flex w-full max-w-[1280px] items-center justify-between gap-3 px-4 py-2 sm:px-6 lg:px-8">
+          {user ? (
+            /* logged in: delivery date + address */
             <button
               type="button"
-              onClick={() => setShowSignup(true)}
-              className="rounded-lg border-2 border-red-600 px-4 py-2 text-[15px] font-semibold text-red-600 transition hover:bg-red-50 sm:px-5 sm:py-2.5 sm:text-base"
+              onClick={() => setShowAddress(true)}
+              aria-label="Change delivery address"
+              className="flex min-w-0 items-center gap-3 rounded-md py-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40"
             >
-              Sign Up
+              <span
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-600 text-base font-bold text-white sm:h-12 sm:w-12 sm:text-lg"
+                aria-hidden="true"
+              >
+                {user.name.trim().charAt(0).toUpperCase()}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-base font-semibold text-gray-900 sm:text-xl">
+                  Delivery by {deliveryLabel()}
+                </span>
+                <span className="flex items-center gap-1 text-xs text-gray-600 sm:text-sm">
+                  <span className="truncate">
+                    {user.address?.line
+                      ? `${user.address.line}, ${user.address.city} ${user.address.pincode}`
+                      : "Add delivery address"}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0" />
+                </span>
+              </span>
             </button>
-            <Link
-              href="/login"
-              className="rounded-lg border-2 border-red-600 bg-red-600 px-4 py-2 text-[15px] font-semibold text-white transition hover:border-red-700 hover:bg-red-700 sm:px-5 sm:py-2.5 sm:text-base"
+          ) : (
+            /* logged out: crown avatar + city */
+            <button
+              type="button"
+              className="flex items-center gap-3 rounded-md py-1 text-[15px] text-gray-600 hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40"
+              aria-haspopup="listbox"
             >
-              Login
-            </Link>
-          </div>
+              <CrownAvatar className="h-12 w-12 sm:h-[60px] sm:w-[60px]" />
+              <span className="flex items-center gap-1.5">
+                {city}
+                <ChevronDown className="h-4 w-4" />
+              </span>
+            </button>
+          )}
+
+          {user ? (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="shrink-0 rounded-lg border border-gray-200 bg-white px-4 py-2 text-[15px] font-semibold text-red-600 shadow-sm transition hover:bg-red-50 sm:px-6 sm:py-2.5 sm:text-base"
+            >
+              Logout
+            </button>
+          ) : (
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={openSignup}
+                className="rounded-lg border-2 border-red-600 px-4 py-2 text-[15px] font-semibold text-red-600 transition hover:bg-red-50 sm:px-5 sm:py-2.5 sm:text-base"
+              >
+                Sign Up
+              </button>
+              <button
+                type="button"
+                onClick={openLogin}
+                className="rounded-lg border-2 border-red-600 bg-red-600 px-4 py-2 text-[15px] font-semibold text-white transition hover:border-red-700 hover:bg-red-700 sm:px-5 sm:py-2.5 sm:text-base"
+              >
+                Login
+              </button>
+            </div>
+          )}
         </div>
       </div>
+      )}
 
-      <SignupModal open={showSignup} onClose={() => setShowSignup(false)} />
+      <SignupModal
+        open={showSignup}
+        onClose={() => setShowSignup(false)}
+        onSuccess={refreshUser}
+        onSwitchToLogin={openLogin}
+      />
+      {showLogin && (
+        <LoginModal
+          onClose={() => setShowLogin(false)}
+          onSuccess={refreshUser}
+          onSwitchToSignup={openSignup}
+        />
+      )}
+      {showAddress && user && (
+        <AddressModal
+          initial={user.address}
+          onClose={() => setShowAddress(false)}
+          onSaved={refreshUser}
+        />
+      )}
     </header>
   );
 }

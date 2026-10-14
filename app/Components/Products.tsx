@@ -2,7 +2,9 @@
 
 import { useRef, useState } from "react";
 import ProductCard from "./ProductCard";
+import CategoryCircles from "./CategoryCircles";
 import { categories, type Category } from "../data/products";
+import { useUser } from "../lib/user";
 
 function Chevron({ dir }: { dir: "left" | "right" }) {
   return (
@@ -12,7 +14,7 @@ function Chevron({ dir }: { dir: "left" | "right" }) {
   );
 }
 
-function CategorySection({ category, tinted }: { category: Category; tinted: boolean }) {
+function CategorySection({ category, bandClass }: { category: Category; bandClass: string }) {
   const [viewAll, setViewAll] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -22,7 +24,7 @@ function CategorySection({ category, tinted }: { category: Category; tinted: boo
   return (
     <section
       id={category.id}
-      className={`scroll-mt-24 rounded-3xl px-4 py-6 sm:px-6 ${tinted ? "bg-[#fdf3ee]" : "bg-transparent"}`}
+      className={`scroll-mt-24 rounded-3xl px-4 py-6 sm:px-6 ${bandClass}`}
     >
       <div className="mb-5 flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-gray-900 sm:text-2xl lg:text-3xl">
@@ -78,6 +80,7 @@ function CategorySection({ category, tinted }: { category: Category; tinted: boo
 }
 
 export default function Products() {
+  const { user } = useUser();
   const [active, setActive] = useState(categories[0].id);
 
   const goTo = (id: string) => {
@@ -87,35 +90,46 @@ export default function Products() {
 
   return (
     <div className="mx-auto w-full max-w-[1400px] px-3 sm:px-6">
-      {/* category tabs */}
-      <nav
-        aria-label="Product categories"
-        className="sticky top-0 z-30 -mx-3 border-b border-gray-100 bg-white/95 px-3 py-3 backdrop-blur sm:-mx-6 sm:px-6"
-      >
-        <ul className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {categories.map((c) => (
-            <li key={c.id} className="shrink-0">
-              <button
-                type="button"
-                onClick={() => goTo(c.id)}
-                aria-current={active === c.id}
-                className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition sm:text-base ${
-                  active === c.id
-                    ? "border-red-600 bg-red-600 text-white"
-                    : "border-gray-200 bg-white text-gray-700 hover:border-red-300 hover:text-red-600"
-                }`}
-              >
-                <span aria-hidden>{c.emoji}</span>
-                {c.name}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      {user ? (
+        /* logged in: round category icons */
+        <CategoryCircles categories={categories} onSelect={goTo} />
+      ) : (
+        /* logged out: sticky category tabs */
+        <nav
+          aria-label="Product categories"
+          className="sticky top-0 z-30 -mx-3 border-b border-gray-100 bg-white/95 px-3 py-3 backdrop-blur sm:-mx-6 sm:px-6"
+        >
+          <ul className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {categories.map((c) => (
+              <li key={c.id} className="shrink-0">
+                <button
+                  type="button"
+                  onClick={() => goTo(c.id)}
+                  aria-current={active === c.id}
+                  className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition sm:text-base ${
+                    active === c.id
+                      ? "border-red-600 bg-red-600 text-white"
+                      : "border-gray-200 bg-white text-gray-700 hover:border-red-300 hover:text-red-600"
+                  }`}
+                >
+                  <span aria-hidden>{c.emoji}</span>
+                  {c.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
 
       <div className="mt-4 flex flex-col gap-6">
         {categories.map((c, i) => (
-          <CategorySection key={c.id} category={c} tinted={i % 2 === 0} />
+          <CategorySection
+            key={c.id}
+            category={c}
+            bandClass={
+              user ? "bg-[#fbe4a1]" : i % 2 === 0 ? "bg-[#fdf3ee]" : "bg-transparent"
+            }
+          />
         ))}
       </div>
     </div>

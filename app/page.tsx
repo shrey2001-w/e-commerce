@@ -9,7 +9,7 @@ const page = () => {
     <div>
       <Header />
       <Products />
-      <Footer />
+      
       
     </div>
   )

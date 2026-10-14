@@ -2,11 +2,16 @@
 
 import { useEffect, useState } from "react";
 
-type Props = { open: boolean; onClose: () => void };
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  onSuccess?: () => void; // called after the account is created (user is logged in)
+  onSwitchToLogin?: () => void;
+};
 
 const initialForm = { name: "", email: "", phone: "", password: "" };
 
-export default function SignupModal({ open, onClose }: Props) {
+export default function SignupModal({ open, onClose, onSuccess, onSwitchToLogin }: Props) {
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -51,6 +56,7 @@ export default function SignupModal({ open, onClose }: Props) {
       }
       setSuccess(true);
       setForm(initialForm);
+      onSuccess?.();
       setTimeout(() => {
         setSuccess(false);
         onClose();
@@ -96,56 +102,67 @@ export default function SignupModal({ open, onClose }: Props) {
             Account created successfully! 🎉
           </p>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <input
-              name="name"
-              type="text"
-              placeholder="Full name"
-              value={form.name}
-              onChange={handleChange}
-              required
-              className={inputClass}
-            />
-            <input
-              name="email"
-              type="email"
-              placeholder="Email address"
-              value={form.email}
-              onChange={handleChange}
-              required
-              className={inputClass}
-            />
-            <input
-              name="phone"
-              type="tel"
-              inputMode="numeric"
-              placeholder="Phone number (10 digits)"
-              value={form.phone}
-              onChange={handleChange}
-              required
-              className={inputClass}
-            />
-            <input
-              name="password"
-              type="password"
-              placeholder="Password (min 6 characters)"
-              value={form.password}
-              onChange={handleChange}
-              required
-              minLength={6}
-              className={inputClass}
-            />
+          <>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <input
+                name="name"
+                type="text"
+                placeholder="Full name"
+                value={form.name}
+                onChange={handleChange}
+                required
+                className={inputClass}
+              />
+              <input
+                name="email"
+                type="email"
+                placeholder="Email address"
+                value={form.email}
+                onChange={handleChange}
+                required
+                className={inputClass}
+              />
+              <input
+                name="phone"
+                type="tel"
+                inputMode="numeric"
+                placeholder="Phone number (10 digits)"
+                value={form.phone}
+                onChange={handleChange}
+                required
+                className={inputClass}
+              />
+              <input
+                name="password"
+                type="password"
+                placeholder="Password (min 6 characters)"
+                value={form.password}
+                onChange={handleChange}
+                required
+                minLength={6}
+                className={inputClass}
+              />
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+              {error && <p className="text-sm text-red-600">{error}</p>}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-lg bg-red-600 py-3 text-base font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? "Creating account…" : "Create Account"}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-lg bg-red-600 py-3 text-base font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? "Creating account…" : "Create Account"}
+              </button>
+            </form>
+
+            {onSwitchToLogin && (
+              <p className="mt-5 text-center text-sm text-gray-500">
+                Already have an account?{" "}
+                <button type="button" onClick={onSwitchToLogin} className="font-semibold text-red-600 hover:underline">
+                  Login
+                </button>
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>

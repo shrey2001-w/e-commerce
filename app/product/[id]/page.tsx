@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import ProductHeader from "../../Components/ProductHeader";
 import ProductDetails from "../../Components/ProductDetails";
 import RecommendedProducts from "../../Components/RecommendedProducts";
-import Footer from "../../Components/Footer";
-import { findProduct } from "../../data/products";
+import { categories, findProduct } from "../../data/products";
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -24,6 +25,11 @@ function deliveryLabel(daysAhead = 5) {
   return `${day}${suffix} ${get("month")}, ${get("weekday")}`;
 }
 
+// Tells Next.js which product pages exist, so metadata can be built at build time
+export function generateStaticParams() {
+  return categories.flatMap((c) => c.products.map((p) => ({ id: String(p.id) })));
+}
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
   const found = findProduct(id);
@@ -34,27 +40,40 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function ProductPage({ params }: PageProps) {
+async function ProductContent({ params }: PageProps) {
   const { id } = await params;
   const found = findProduct(id);
   if (!found) notFound();
 
   const { product, category } = found;
 
+  // the delivery date depends on today's date, so render this part at request time
+  await connection();
+  const deliveryDate = deliveryLabel(5);
+
+  return (
+    <>
+      <ProductDetails
+        product={product}
+        categoryId={category.id}
+        categoryName={category.name}
+        emoji={category.emoji}
+        deliveryDate={deliveryDate}
+      />
+      <RecommendedProducts currentId={product.id} currentCategoryId={category.id} />
+    </>
+  );
+}
+
+export default function ProductPage({ params }: PageProps) {
   return (
     <>
       <ProductHeader />
       <main className="min-h-screen bg-[#f8f8f8] pb-16">
-        <ProductDetails
-          product={product}
-          categoryId={category.id}
-          categoryName={category.name}
-          emoji={category.emoji}
-          deliveryDate={deliveryLabel(5)}
-        />
-        <RecommendedProducts currentId={product.id} currentCategoryId={category.id} />
+        <Suspense fallback={<div className="min-h-[60vh]" />}>
+          <ProductContent params={params} />
+        </Suspense>
       </main>
-      <Footer />
     </>
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Product } from "../data/products";
+import { useCart } from "../lib/cart";
 
 type Props = {
   product: Product;
@@ -25,8 +26,11 @@ function Star() {
 }
 
 export default function ProductCard({ product, fallbackEmoji = "🛍️", fluid }: Props) {
-  const [qty, setQty] = useState(0);
+  const { items, addItem, increase, decrease } = useCart();
   const [imgFailed, setImgFailed] = useState(false);
+
+  // quantity comes from the shared cart, so every card stays in sync with the cart drawer
+  const qty = items.find((i) => i.id === product.id)?.qty ?? 0;
 
   const saved = product.mrp - product.price;
   const percent = Math.round((saved / product.mrp) * 100);
@@ -126,7 +130,7 @@ export default function ProductCard({ product, fallbackEmoji = "🛍️", fluid 
           {qty === 0 ? (
             <button
               type="button"
-              onClick={() => setQty(1)}
+              onClick={() => addItem(product)}
               className="relative z-10 flex shrink-0 flex-col items-center justify-center rounded-lg border-2 border-red-600 bg-white px-4 py-1.5 font-bold text-red-600 transition hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:px-6 sm:py-2"
             >
               <span className="text-sm leading-tight sm:text-base">ADD</span>
@@ -141,7 +145,7 @@ export default function ProductCard({ product, fallbackEmoji = "🛍️", fluid 
               <button
                 type="button"
                 aria-label="Decrease quantity"
-                onClick={() => setQty((q) => q - 1)}
+                onClick={() => decrease(product.id)}
                 className="px-3 py-2 text-lg font-bold leading-none hover:bg-red-700"
               >
                 −
@@ -150,7 +154,7 @@ export default function ProductCard({ product, fallbackEmoji = "🛍️", fluid 
               <button
                 type="button"
                 aria-label="Increase quantity"
-                onClick={() => setQty((q) => q + 1)}
+                onClick={() => increase(product.id)}
                 className="px-3 py-2 text-lg font-bold leading-none hover:bg-red-700"
               >
                 +

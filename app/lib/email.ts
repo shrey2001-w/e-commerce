@@ -38,7 +38,7 @@ function detailRow(label: string, value: string) {
     </tr>`;
 }
 
-// Shared layout used by both emails (inline CSS + tables for email-client support)
+// Shared layout used by all emails (inline CSS + tables for email-client support)
 function layout(title: string, intro: string, rowsHtml: string, footer: string) {
   return `<!DOCTYPE html>
 <html>
@@ -105,6 +105,32 @@ function adminEmailHtml(u: NewUser) {
   );
 }
 
+function resetEmailHtml(name: string, resetUrl: string) {
+  const safeUrl = esc(resetUrl);
+  const rows = `
+    <tr>
+      <td style="padding:8px 0 4px;">
+        <a href="${safeUrl}"
+           style="display:inline-block;background:#DC2626;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:8px;">
+          Reset Password
+        </a>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding-top:18px;font-size:13px;line-height:1.6;color:#6b7280;">
+        Button not working? Copy and paste this link into your browser:<br />
+        <a href="${safeUrl}" style="color:#DC2626;word-break:break-all;">${safeUrl}</a>
+      </td>
+    </tr>`;
+
+  return layout(
+    `Hi ${esc(name)}, reset your password`,
+    "We received a request to reset the password for your CityMall account. This link is valid for <strong>1 hour</strong>.",
+    rows,
+    "If you didn't ask for this, you can safely ignore this email. Your password will not change."
+  );
+}
+
 /* ---------- sending ---------- */
 
 async function sendBrevoEmail(payload: {
@@ -168,5 +194,22 @@ export async function sendSignupEmails(user: NewUser) {
   const results = await Promise.allSettled(jobs);
   results.forEach((r) => {
     if (r.status === "rejected") console.error("Signup email failed:", r.reason);
+  });
+}
+
+// Sends the "reset your password" email containing the one-time link.
+// Throws on failure so the caller can log it.
+export async function sendPasswordResetEmail(
+  user: { name: string; email: string },
+  resetUrl: string
+) {
+  if (!process.env.BREVO_API_KEY || !process.env.BREVO_SENDER_EMAIL) {
+    throw new Error("BREVO_API_KEY or BREVO_SENDER_EMAIL is missing in .env.local");
+  }
+
+  await sendBrevoEmail({
+    to: [{ email: user.email, name: user.name }],
+    subject: "Reset your CityMall password",
+    htmlContent: resetEmailHtml(user.name, resetUrl),
   });
 }
