@@ -1,35 +1,78 @@
 import { Schema, models, model } from "mongoose";
 
-const ItemSchema = new Schema(
-  {
-    productId: { type: String, required: true },
-    name: { type: String, required: true },
-    quantity: String, // pack size label, e.g. "500 g"
-    price: { type: Number, required: true },
-    mrp: { type: Number, required: true },
-    qty: { type: Number, required: true },
-  },
-  { _id: false }
-);
-
 const OrderSchema = new Schema(
   {
     user: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
-    items: { type: [ItemSchema], required: true },
+
+    // snapshot of who ordered (kept even if the user later edits their profile)
+    customer: {
+      name: String,
+      email: String,
+      phone: String,
+    },
+
+    // delivery address at the time of the order
     address: {
       line: String,
       city: String,
       pincode: String,
     },
+
+    items: [
+      {
+        productId: String,
+        name: String,
+        image: String,
+        quantity: String, // pack size, e.g. "500 g"
+        unitPrice: String,
+        mrp: Number,
+        price: Number,
+        qty: Number,
+        lineTotal: Number,
+      },
+    ],
+
     billing: {
+      itemCount: Number,
+      qtyCount: Number,
       mrpTotal: Number,
       discount: Number,
-      subtotal: Number,
       platformFee: Number,
       gst: Number,
       total: Number,
     },
-    status: { type: String, default: "placed" },
+
+    total: { type: Number, required: true },
+    currency: { type: String, default: "INR" },
+
+    // how the customer chose to pay: cod / upi (QR) / stripe
+    paymentMethod: { type: String, enum: ["cod", "upi", "stripe"], default: "cod" },
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "awaiting_verification", "paid", "failed"],
+      default: "pending",
+    },
+    paidAt: Date,
+
+    // filled in by the Stripe webhook after a successful payment
+    stripe: {
+      sessionId: { type: String, index: true },
+      paymentIntentId: String,
+      amountPaid: Number,
+      paymentMethodType: String, // what the customer actually used on Stripe: card, upi, netbanking...
+      cardBrand: String,
+      cardLast4: String,
+      receiptUrl: String,
+    },
+
+    orderStatus: {
+      type: String,
+      enum: ["placed", "confirmed", "shipped", "delivered", "cancelled"],
+      default: "placed",
+    },
+    deliveryEstimate: String,
+
+    emailSent: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

@@ -187,25 +187,33 @@ export default function CartView() {
   // Step 2: user picked a payment method in the modal
   const placeOrder = async (method: PaymentMethod) => {
     setError("");
-
-    if (method !== "cod") {
-      setError(
-        method === "stripe"
-          ? "Stripe payments are not set up yet. Please choose Cash on Delivery."
-          : "UPI payments are not set up yet. Please choose Cash on Delivery."
-      );
-      return;
-    }
-
     setPlacing(true);
+    let redirecting = false;
     try {
+      const orderItems = items.map((i) => ({ id: i.id, qty: i.qty }));
+
+      // Stripe: create a Checkout Session and send the customer to Stripe
+      if (method === "stripe") {
+        const res = await fetch("/api/stripe/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: orderItems }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.url) {
+          setError(data.error || "Could not start Stripe checkout.");
+          return;
+        }
+        redirecting = true;
+        window.location.href = data.url;
+        return;
+      }
+
+      // Cash on delivery / UPI: place the order (emails are sent by the server)
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((i) => ({ id: i.id, qty: i.qty })),
-          paymentMethod: method,
-        }),
+        body: JSON.stringify({ items: orderItems, paymentMethod: method }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -218,7 +226,7 @@ export default function CartView() {
     } catch {
       setError("Network error. Please try again.");
     } finally {
-      setPlacing(false);
+      if (!redirecting) setPlacing(false);
     }
   };
 
@@ -236,6 +244,11 @@ export default function CartView() {
         </p>
         {placed.method === "cod" && (
           <p className="text-sm text-gray-500">Please keep the cash ready at the time of delivery.</p>
+        )}
+        {placed.method === "upi" && (
+          <p className="text-sm text-gray-500">
+            We&apos;ll verify your UPI payment and confirm by email shortly.
+          </p>
         )}
         <p className="break-all text-xs text-gray-400">Order ID: {placed.id}</p>
         <Link

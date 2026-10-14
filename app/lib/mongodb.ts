@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const MONGODB_URI = process.env.MONGODB_URI as string;
 
 if (!MONGODB_URI) {
-  throw new Error("Please define MONGODB_URI in .env.local");
+  throw new Error("Please define MONGODB_URI in your .env file");
 }
 
 type Cache = {
@@ -24,6 +24,12 @@ export async function dbConnect() {
   if (!cached.promise) {
     cached.promise = mongoose.connect(MONGODB_URI, { bufferCommands: false });
   }
-  cached.conn = await cached.promise;
+  try {
+    cached.conn = await cached.promise;
+  } catch (err) {
+    // allow a retry on the next request if the first connection attempt failed
+    cached.promise = null;
+    throw err;
+  }
   return cached.conn;
 }

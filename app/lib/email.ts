@@ -166,7 +166,7 @@ export async function sendSignupEmails(user: NewUser) {
   const { BREVO_API_KEY, BREVO_SENDER_EMAIL, ADMIN_EMAIL } = process.env;
 
   if (!BREVO_API_KEY || !BREVO_SENDER_EMAIL) {
-    console.error("Email skipped: BREVO_API_KEY or BREVO_SENDER_EMAIL is missing in .env.local");
+    console.error("Email skipped: BREVO_API_KEY or BREVO_SENDER_EMAIL is missing in .env");
     return;
   }
 
@@ -188,7 +188,7 @@ export async function sendSignupEmails(user: NewUser) {
       })
     );
   } else {
-    console.error("Admin email skipped: ADMIN_EMAIL is missing in .env.local");
+    console.error("Admin email skipped: ADMIN_EMAIL is missing in .env");
   }
 
   const results = await Promise.allSettled(jobs);
@@ -204,12 +204,116 @@ export async function sendPasswordResetEmail(
   resetUrl: string
 ) {
   if (!process.env.BREVO_API_KEY || !process.env.BREVO_SENDER_EMAIL) {
-    throw new Error("BREVO_API_KEY or BREVO_SENDER_EMAIL is missing in .env.local");
+    throw new Error("BREVO_API_KEY or BREVO_SENDER_EMAIL is missing in .env");
   }
 
   await sendBrevoEmail({
     to: [{ email: user.email, name: user.name }],
     subject: "Reset your CityMall password",
     htmlContent: resetEmailHtml(user.name, resetUrl),
+  });
+}
+
+/* ---------- order emails ---------- */
+
+export type OrderMail = {
+  id: string;
+  total: number;
+  paymentMethod: "cod" | "upi" | "stripe";
+  paymentDetail?: string; // e.g. "Visa card ending 4242"
+  transactionId?: string; // Stripe payment ID
+  items: { name: string; price: number; qty: number }[];
+  address?: { line?: string; city?: string; pincode?: string };
+  createdAt: Date;
+};
+
+const METHOD_LABEL: Record<OrderMail["paymentMethod"], string> = {
+  cod: "Cash on Delivery",
+  upi: "UPI (payment to be verified)",
+  stripe: "Online payment via Stripe",
+};
+
+const STATUS_LABEL: Record<OrderMail["paymentMethod"], string> = {
+  cod: "To be paid on delivery",
+  upi: "Awaiting verification",
+  stripe: "Paid",
+};
+
+const inr = (n: number) =>
+  `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+function orderRows(o: OrderMail, u: { name: string; email: string; phone: string }) {
+  const itemsHtml = o.items
+    .map((i) => `${esc(i.name)} × ${i.qty} — ${inr(i.price * i.qty)}`)
+    .join("<br />");
+  const address = o.address?.line
+    ? `${o.address.line}, ${o.address.city ?? ""} ${o.address.pincode ?? ""}`
+    : "Not provided";
+  const payment = o.paymentDetail
+    ? `${METHOD_LABEL[o.paymentMethod]} (${o.paymentDetail})`
+    : METHOD_LABEL[o.paymentMethod];
+
+  return (
+    detailRow("Order ID", esc(o.id)) +
+    detailRow("Customer", esc(u.name)) +
+    detailRow("Phone", esc(u.phone)) +
+    detailRow("Email", esc(u.email)) +
+    detailRow("Address", esc(address)) +
+    detailRow("Items", itemsHtml) +
+    detailRow("Payment method", esc(payment)) +
+    detailRow("Payment status", esc(STATUS_LABEL[o.paymentMethod])) +
+    (o.transactionId ? detailRow("Transaction ID", esc(o.transactionId)) : "") +
+    detailRow("Total", esc(inr(o.total))) +
+    detailRow("Placed on", esc(formatDate(o.createdAt)))
+  );
+}
+
+// Sends the order confirmation to the customer AND the order details to the admin.
+// Never throws, so a failed email can't break the order.
+export async function sendOrderEmails(
+  order: OrderMail,
+  user: { name: string; email: string; phone: string }
+) {
+  const { BREVO_API_KEY, BREVO_SENDER_EMAIL, ADMIN_EMAIL } = process.env;
+  if (!BREVO_API_KEY || !BREVO_SENDER_EMAIL) {
+    console.error("Order email skipped: BREVO_API_KEY or BREVO_SENDER_EMAIL is missing");
+    return;
+  }
+
+  const rows = orderRows(order, user);
+  const jobs: Promise<void>[] = [
+    sendBrevoEmail({
+      to: [{ email: user.email, name: user.name }],
+      subject: `Your CityMall order is confirmed (${order.id})`,
+      htmlContent: layout(
+        `Thanks for your order, ${esc(user.name)}!`,
+        order.paymentMethod === "stripe"
+          ? "Your payment was successful and your order is confirmed. Here are the details:"
+          : "We have received your order. Here are the details:",
+        rows,
+        "If you have any questions, just reply to this email."
+      ),
+    }),
+  ];
+
+  if (ADMIN_EMAIL) {
+    jobs.push(
+      sendBrevoEmail({
+        to: [{ email: ADMIN_EMAIL }],
+        subject: `New order ${inr(order.total)} — ${METHOD_LABEL[order.paymentMethod]}`,
+        htmlContent: layout(
+          "New order received",
+          "A customer just placed an order on CityMall:",
+          rows,
+          "Reply to this email to contact the customer directly."
+        ),
+        replyTo: { email: user.email, name: user.name },
+      })
+    );
+  }
+
+  const results = await Promise.allSettled(jobs);
+  results.forEach((r) => {
+    if (r.status === "rejected") console.error("Order email failed:", r.reason);
   });
 }
