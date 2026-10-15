@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import CategoryListing from "../../../Components/CategoryListing";
 import { getFooterCategory, getSubProducts } from "../../../lib/catalog";
+import { getCatalog } from "../../../lib/store";
 import { footerCategories, slugify } from "../../../data/footer";
 
 export function generateStaticParams() {
@@ -13,8 +14,10 @@ export function generateStaticParams() {
 async function SubContent({ params }: { params: Promise<{ slug: string; sub: string }> }) {
   const { slug, sub } = await params;
   const cat = getFooterCategory(slug);
-  const result = getSubProducts(slug, sub);
-  if (!cat || !result) notFound();
+  if (!cat) notFound();
+  const { categories } = await getCatalog();
+  const result = getSubProducts(categories, slug, sub);
+  if (!result) notFound();
 
   return (
     <CategoryListing

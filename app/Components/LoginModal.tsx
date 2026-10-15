@@ -6,9 +6,11 @@ type Props = {
   onClose: () => void;
   onSuccess: () => void; // called after a successful login
   onSwitchToSignup: () => void;
+  /** when provided, shows a "Login as Admin" button */
+  onSwitchToAdmin?: () => void;
 };
 
-export default function LoginModal({ onClose, onSuccess, onSwitchToSignup }: Props) {
+export default function LoginModal({ onClose, onSuccess, onSwitchToSignup, onSwitchToAdmin }: Props) {
   const [view, setView] = useState<"login" | "forgot">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -158,6 +160,18 @@ export default function LoginModal({ onClose, onSuccess, onSwitchToSignup }: Pro
                 Sign Up
               </button>
             </p>
+
+            {onSwitchToAdmin && (
+              <div className="mt-5 border-t border-gray-100 pt-5">
+                <button
+                  type="button"
+                  onClick={onSwitchToAdmin}
+                  className="w-full rounded-lg border-2 border-[#1a1b2e] py-2.5 text-sm font-semibold text-[#1a1b2e] transition hover:bg-gray-50"
+                >
+                  Login as Admin
+                </button>
+              </div>
+            )}
           </>
         ) : (
           <>

@@ -6,21 +6,15 @@ import { useRouter } from "next/navigation";
 import { Bungee } from "next/font/google";
 import SignupModal from "./SignupModal";
 import LoginModal from "./LoginModal";
+import AdminLoginModal from "./AdminLoginModal";
 import { useCart } from "../lib/cart";
 import { useUser, refreshUser, clearUser } from "../lib/user";
 import AddressModal from "./AddressModal";
 import { deliveryLabel } from "../lib/delivery";
-import { categories } from "../data/products";
+import { useCatalog, useSite } from "../lib/useSite";
 
 // Chunky display font that matches the "CITYMALL" wordmark
 const bungee = Bungee({ weight: "400", subsets: ["latin"] });
-
-/*
-  Header colors now match the rest of the website:
-    primary red   #DC2626  (same as price pill / ADD button)
-    dark red      #B91C1C  (hover, same as pill shadow)
-    navy          #1a1b2e  (same as footer background)
-*/
 
 /* ---------- Icons ---------- */
 
@@ -124,15 +118,6 @@ function CrownAvatar({ className = "" }: { className?: string }) {
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
-// every product with its category emoji, built once
-const searchIndex = categories.flatMap((c) =>
-  c.products.map((p) => ({
-    product: p,
-    emoji: c.emoji,
-    hay: `${p.name} ${p.brand ?? ""} ${c.name}`.toLowerCase(),
-  }))
-);
-
 function SearchThumb({ src, emoji }: { src: string; emoji: string }) {
   const [failed, setFailed] = useState(false);
   return (
@@ -151,13 +136,28 @@ function SearchThumb({ src, emoji }: { src: string; emoji: string }) {
 
 export default function Header({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
+  const { settings: s, loaded } = useSite();
+  const { categories } = useCatalog();
+  const cats = useMemo(() => categories ?? [], [categories]);
+
   const [query, setQuery] = useState("");
-  const [city] = useState("Kanpur");
   const [showSignup, setShowSignup] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { user } = useUser();
   const [showAddress, setShowAddress] = useState(false);
   const { count } = useCart();
+
+  const availability = s.availabilityMessage.split("{city}").join(s.city);
+
+  // is an admin session active? (cookie is httpOnly, so ask the server)
+  useEffect(() => {
+    fetch("/api/admin/session", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => setIsAdmin(!!j.admin))
+      .catch(() => {});
+  }, []);
 
   /* publish the header's real height as a CSS variable so sticky elements sit below it */
   const headerRef = useRef<HTMLElement>(null);
@@ -195,15 +195,27 @@ export default function Header({ compact = false }: { compact?: boolean }) {
     };
   }, [showCats]);
 
-  /* live search */
+  /* live search over the database catalog */
   const [showResults, setShowResults] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
+
+  const searchIndex = useMemo(
+    () =>
+      cats.flatMap((c) =>
+        c.products.map((p) => ({
+          product: p,
+          emoji: c.emoji,
+          hay: `${p.name} ${p.brand ?? ""} ${c.name}`.toLowerCase(),
+        }))
+      ),
+    [cats]
+  );
 
   const results = useMemo(() => {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
     if (terms.length === 0) return [];
     return searchIndex.filter(({ hay }) => terms.every((t) => hay.includes(t))).slice(0, 8);
-  }, [query]);
+  }, [query, searchIndex]);
 
   // close the results when clicking outside the search box (works for both the desktop and mobile copy)
   useEffect(() => {
@@ -252,12 +264,18 @@ export default function Header({ compact = false }: { compact?: boolean }) {
 
   const openLogin = () => {
     setShowSignup(false);
+    setShowAdminLogin(false);
     setShowLogin(true);
   };
 
   const openSignup = () => {
     setShowLogin(false);
     setShowSignup(true);
+  };
+
+  const openAdmin = () => {
+    setShowLogin(false);
+    setShowAdminLogin(true);
   };
 
   // rendered twice (desktop row + mobile row), so ids get a suffix
@@ -285,7 +303,7 @@ export default function Header({ compact = false }: { compact?: boolean }) {
           }}
           onFocus={() => query.trim() && setShowResults(true)}
           onKeyDown={handleSearchKey}
-          placeholder="Search for products…"
+          placeholder={s.searchPlaceholder}
           className="w-full bg-transparent text-base text-gray-800 placeholder:text-gray-400 focus:outline-none"
         />
       </div>
@@ -338,78 +356,114 @@ export default function Header({ compact = false }: { compact?: boolean }) {
   return (
     <header
       ref={headerRef}
-      className="sticky top-0 z-40 w-full border-t-4 border-t-[#1a1b2e] bg-white shadow-sm"
+      style={{ borderTopColor: s.topBarColor }}
+      className="sticky top-0 z-40 w-full border-t-4 bg-white shadow-sm"
     >
       <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8">
-        {/* ===== Row 1: logo · search · categories · orders · cart ===== */}
+        {/* ===== Row 1: logo · search · links · categories · orders · cart ===== */}
         <div className="relative flex items-center justify-between gap-4 py-3 lg:gap-8 lg:py-4">
-          {/* Logo */}
-          <Link href="/" aria-label="CityMall home" className="flex shrink-0 items-center gap-3 sm:gap-4">
-            <LogoMark className="h-8 w-7 sm:h-10 sm:w-8" />
-            <span
-              className={`${bungee.className} text-xl leading-none tracking-wide text-red-600 sm:text-[28px]`}
-            >
-              CITYMALL
-            </span>
+          {/* Logo (fades in once the admin settings have loaded, so the old logo never flashes) */}
+          <Link
+            href="/"
+            aria-label={`${s.brandName || "Store"} home`}
+            className={`flex shrink-0 items-center gap-3 transition-opacity duration-200 sm:gap-4 ${
+              loaded ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            {s.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={s.logoUrl}
+                alt={s.brandName || "Logo"}
+                className="h-9 w-auto max-w-[140px] object-contain sm:h-11 sm:max-w-[200px]"
+              />
+            ) : (
+              <LogoMark className="h-8 w-7 sm:h-10 sm:w-8" />
+            )}
+            {s.brandName && (
+              <span
+                style={{ color: s.brandColor }}
+                className={`${bungee.className} text-xl leading-none tracking-wide sm:text-[28px]`}
+              >
+                {s.brandName}
+              </span>
+            )}
           </Link>
 
           {/* Search – inline on large screens */}
           <div className="hidden max-w-[700px] flex-1 md:block">{renderSearch("desktop")}</div>
 
           {/* Right actions */}
-          <nav aria-label="Primary" className="flex shrink-0 items-center gap-4 sm:gap-6 lg:gap-10">
-            {/* Categories dropdown */}
-            <div ref={catsRef} className="sm:relative">
-              <button
-                type="button"
-                onClick={() => setShowCats((o) => !o)}
-                aria-haspopup="true"
-                aria-expanded={showCats}
-                aria-controls="categories-menu"
-                aria-label="Categories"
-                className={`flex items-center gap-2.5 text-[17px] hover:text-red-600 ${
-                  showCats ? "text-red-600" : "text-gray-700"
-                }`}
+          <nav aria-label="Primary" className="flex shrink-0 items-center gap-4 sm:gap-6 lg:gap-8">
+            {/* custom links set in the admin dashboard (desktop only) */}
+            {s.navLinks.map((l) => (
+              <Link
+                key={`${l.label}-${l.href}`}
+                href={l.href}
+                className="hidden text-[17px] text-gray-700 hover:text-red-600 lg:inline"
               >
-                <CategoriesIcon className="h-5 w-5" />
-                <span className="hidden lg:inline">Categories</span>
-                <ChevronDown
-                  className={`hidden h-4 w-4 transition-transform lg:block ${showCats ? "rotate-180" : ""}`}
-                />
-              </button>
+                {l.label}
+              </Link>
+            ))}
 
-              {showCats && (
-                <div
-                  id="categories-menu"
-                  className="absolute left-4 right-4 top-full z-50 mt-1 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl sm:left-auto sm:right-0 sm:mt-3 sm:w-80"
+            {/* Categories dropdown */}
+            {s.showCategories && (
+              <div ref={catsRef} className="sm:relative">
+                <button
+                  type="button"
+                  onClick={() => setShowCats((o) => !o)}
+                  aria-haspopup="true"
+                  aria-expanded={showCats}
+                  aria-controls="categories-menu"
+                  aria-label={s.categoriesLabel}
+                  className={`flex items-center gap-2.5 text-[17px] hover:text-red-600 ${
+                    showCats ? "text-red-600" : "text-gray-700"
+                  }`}
                 >
-                  <p className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-900">
-                    Shop by Category
-                  </p>
-                  <ul className="max-h-[60vh] overflow-y-auto py-1">
-                    {categories.map((c) => (
-                      <li key={c.id}>
-                        <Link
-                          href={`/#${c.id}`}
-                          onClick={() => setShowCats(false)}
-                          className="flex items-center gap-3 px-4 py-2.5 text-[15px] text-gray-800 transition hover:bg-red-50 hover:text-red-600"
-                        >
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-lg" aria-hidden>
-                            {c.emoji}
-                          </span>
-                          {c.name}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
+                  <CategoriesIcon className="h-5 w-5" />
+                  <span className="hidden lg:inline">{s.categoriesLabel}</span>
+                  <ChevronDown
+                    className={`hidden h-4 w-4 transition-transform lg:block ${showCats ? "rotate-180" : ""}`}
+                  />
+                </button>
 
-            <Link href="/orders" className="flex items-center gap-2.5 text-[17px] text-gray-700 hover:text-red-600" aria-label="Orders">
-              <OrdersIcon className="h-6 w-6" />
-              <span className="hidden lg:inline">Orders</span>
-            </Link>
+                {showCats && (
+                  <div
+                    id="categories-menu"
+                    className="absolute left-4 right-4 top-full z-50 mt-1 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl sm:left-auto sm:right-0 sm:mt-3 sm:w-80"
+                  >
+                    <p className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-900">
+                      Shop by Category
+                    </p>
+                    <ul className="max-h-[60vh] overflow-y-auto py-1">
+                      {cats
+                        .filter((c) => c.products.length > 0)
+                        .map((c) => (
+                          <li key={c.id}>
+                            <Link
+                              href={`/#${c.id}`}
+                              onClick={() => setShowCats(false)}
+                              className="flex items-center gap-3 px-4 py-2.5 text-[15px] text-gray-800 transition hover:bg-red-50 hover:text-red-600"
+                            >
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-lg" aria-hidden>
+                                {c.emoji}
+                              </span>
+                              {c.name}
+                            </Link>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {s.showOrders && (
+              <Link href="/orders" className="flex items-center gap-2.5 text-[17px] text-gray-700 hover:text-red-600" aria-label={s.ordersLabel}>
+                <OrdersIcon className="h-6 w-6" />
+                <span className="hidden lg:inline">{s.ordersLabel}</span>
+              </Link>
+            )}
 
             <Link
               href="/cart"
@@ -423,6 +477,15 @@ export default function Header({ compact = false }: { compact?: boolean }) {
                 </span>
               )}
             </Link>
+
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="rounded-lg bg-[#1a1b2e] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-black"
+              >
+                Dashboard
+              </Link>
+            )}
           </nav>
         </div>
 
@@ -468,11 +531,11 @@ export default function Header({ compact = false }: { compact?: boolean }) {
               <CrownAvatar className="h-12 w-12 shrink-0 sm:h-[60px] sm:w-[60px]" />
               <span className="min-w-0">
                 <span className="block text-base font-semibold text-gray-900 sm:text-xl">
-                  {city}
+                  {s.city}
                 </span>
-                <span className="block text-xs text-red-600 sm:text-sm">
-                  Available only for {city} location
-                </span>
+                {availability && (
+                  <span className="block text-xs text-red-600 sm:text-sm">{availability}</span>
+                )}
               </span>
             </div>
           )}
@@ -492,14 +555,14 @@ export default function Header({ compact = false }: { compact?: boolean }) {
                 onClick={openSignup}
                 className="rounded-lg border-2 border-red-600 px-4 py-2 text-[15px] font-semibold text-red-600 transition hover:bg-red-50 sm:px-5 sm:py-2.5 sm:text-base"
               >
-                Sign Up
+                {s.signupLabel}
               </button>
               <button
                 type="button"
                 onClick={openLogin}
                 className="rounded-lg border-2 border-red-600 bg-red-600 px-4 py-2 text-[15px] font-semibold text-white transition hover:border-red-700 hover:bg-red-700 sm:px-5 sm:py-2.5 sm:text-base"
               >
-                Login
+                {s.loginLabel}
               </button>
             </div>
           )}
@@ -518,6 +581,16 @@ export default function Header({ compact = false }: { compact?: boolean }) {
           onClose={() => setShowLogin(false)}
           onSuccess={refreshUser}
           onSwitchToSignup={openSignup}
+          onSwitchToAdmin={openAdmin}
+        />
+      )}
+      {showAdminLogin && (
+        <AdminLoginModal
+          onClose={() => setShowAdminLogin(false)}
+          onSuccess={() => {
+            setIsAdmin(true);
+            router.push("/admin");
+          }}
         />
       )}
       {showAddress && user && (

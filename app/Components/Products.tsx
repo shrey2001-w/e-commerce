@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ProductCard from "./ProductCard";
 import CategoryCircles from "./CategoryCircles";
-import { categories, type Category } from "../data/products";
+import type { Category } from "../data/products";
 import { useUser } from "../lib/user";
+import { useCatalog } from "../lib/useSite";
 
 function Chevron({ dir }: { dir: "left" | "right" }) {
   return (
@@ -79,12 +80,38 @@ function CategorySection({ category, bandClass }: { category: Category; bandClas
   );
 }
 
+function Skeleton() {
+  return (
+    <div className="mx-auto w-full max-w-[1400px] px-3 sm:px-6" aria-busy="true" aria-label="Loading products">
+      <div className="h-14 animate-pulse border-b border-gray-100" />
+      <div className="mt-4 flex flex-col gap-6">
+        {[0, 1].map((n) => (
+          <div key={n} className="rounded-3xl bg-gray-50 px-4 py-6 sm:px-6">
+            <div className="mb-5 h-8 w-48 animate-pulse rounded bg-gray-200" />
+            <div className="flex gap-4 overflow-hidden">
+              {[0, 1, 2, 3, 4].map((k) => (
+                <div key={k} className="h-72 w-[168px] shrink-0 animate-pulse rounded-3xl bg-gray-200 sm:w-[210px] lg:w-[240px]" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Products() {
   const { user } = useUser();
-  const [active, setActive] = useState(categories[0].id);
+  const { categories, loading } = useCatalog();
+  // hide categories that have no products yet
+  const cats = useMemo(() => (categories ?? []).filter((c) => c.products.length > 0), [categories]);
+
+  const [active, setActive] = useState("");
+  const current = active || cats[0]?.id || "";
 
   // highlight the tab of the section currently in view while scrolling
   useEffect(() => {
+    if (cats.length === 0) return;
     const obs = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
@@ -93,23 +120,29 @@ export default function Products() {
       },
       { rootMargin: "-35% 0px -60% 0px" }
     );
-    categories.forEach((c) => {
+    cats.forEach((c) => {
       const el = document.getElementById(c.id);
       if (el) obs.observe(el);
     });
     return () => obs.disconnect();
-  }, []);
+  }, [cats]);
 
   const goTo = (id: string) => {
     setActive(id);
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  if (loading) return <Skeleton />;
+
+  if (cats.length === 0) {
+    return <p className="py-20 text-center text-gray-500">No products available yet.</p>;
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1400px] px-3 sm:px-6">
       {user ? (
         /* logged in: round category icons */
-        <CategoryCircles categories={categories} onSelect={goTo} />
+        <CategoryCircles categories={cats} onSelect={goTo} />
       ) : (
         /* logged out: sticky category tabs (sit right under the sticky header) */
         <nav
@@ -117,14 +150,14 @@ export default function Products() {
           className="sticky top-[var(--header-h,170px)] z-30 -mx-3 border-b border-gray-100 bg-white px-3 py-3 sm:-mx-6 sm:px-6"
         >
           <ul className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {categories.map((c) => (
+            {cats.map((c) => (
               <li key={c.id} className="shrink-0">
                 <button
                   type="button"
                   onClick={() => goTo(c.id)}
-                  aria-current={active === c.id}
+                  aria-current={current === c.id}
                   className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition sm:text-base ${
-                    active === c.id
+                    current === c.id
                       ? "border-red-600 bg-red-600 text-white"
                       : "border-gray-200 bg-white text-gray-700 hover:border-red-300 hover:text-red-600"
                   }`}
@@ -139,7 +172,7 @@ export default function Products() {
       )}
 
       <div className="mt-4 flex flex-col gap-6">
-        {categories.map((c, i) => (
+        {cats.map((c, i) => (
           <CategorySection
             key={c.id}
             category={c}

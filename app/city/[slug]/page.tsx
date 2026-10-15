@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import CategoryListing from "../../Components/CategoryListing";
-import { categories } from "../../data/products";
+import { getCatalog } from "../../lib/store";
 import { cities, slugify } from "../../data/footer";
 
 export function generateStaticParams() {
@@ -12,6 +12,7 @@ async function CityContent({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const city = cities.find((c) => slugify(c) === slug);
   if (!city) notFound();
+  const { categories } = await getCatalog();
 
   return (
     <CategoryListing

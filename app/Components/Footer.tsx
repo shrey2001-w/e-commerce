@@ -1,33 +1,9 @@
+"use client";
+
+import { Fragment } from "react";
 import Link from "next/link";
-import {
-  businessLinks,
-  cities,
-  companyLinks,
-  footerCategories,
-  legalLinks,
-  slugify,
-  type FooterLink,
-} from "../data/footer";
-
-/* ---- change these to rebrand ---- */
-const BRAND_NAME = "CityMall";
-const BRAND_SHORT = "CM";
-const TAGLINE = "Cash on delivery | Free Delivery";
-const PLAY_STORE_URL = "#";
-const APP_STORE_URL = "#";
-
-const CONTACT = {
-  company: "Rashanbox Retail Private Limited",
-  cin: "U52190HR2020PTC086114",
-  registeredAddress:
-    "Unit No. 1103 Plus Office, 1st Floor, Landmark Cyber Park, Sector 67, Badshahpur, Gurgaon, Haryana, India, 122101",
-  corporateOffice:
-    "12th Floor, Imperia MindSpace Golf Course Ext Rd, Sector 62, Gurgaon, Haryana 122001",
-  email: "support@citymall.live",
-};
-
-const FACEBOOK_URL = "#";
-const LINKEDIN_URL = "#";
+import { DEFAULT_FOOTER, slugify, type FooterLink } from "../lib/footerTypes";
+import { useFooter } from "../lib/useFooter";
 
 const linkClass =
   "text-gray-400 transition-colors hover:text-white focus-visible:text-white focus-visible:outline-none";
@@ -94,10 +70,10 @@ function StoreButton({
 function LinkColumn({ title, links, className = "" }: { title: string; links: FooterLink[]; className?: string }) {
   return (
     <div className={className}>
-      <h3 className="text-lg font-semibold text-white sm:text-xl">{title}</h3>
-      <ul className="mt-5 flex flex-col gap-4 text-[15px] sm:mt-6 sm:gap-[18px] sm:text-base">
+      {title && <h3 className="text-lg font-semibold text-white sm:text-xl">{title}</h3>}
+      <ul className={`${title ? "mt-5 sm:mt-6" : ""} flex flex-col gap-4 text-[15px] sm:gap-[18px] sm:text-base`}>
         {links.map((l) => (
-          <li key={l.label}>
+          <li key={`${l.label}-${l.href}`}>
             <Link href={l.href} className={linkClass}>
               {l.label}
             </Link>
@@ -109,46 +85,88 @@ function LinkColumn({ title, links, className = "" }: { title: string; links: Fo
 }
 
 export default function Footer() {
-  return (
-    <footer className="w-full bg-[#1a1b2e] text-gray-400">
-      <div className="mx-auto w-full max-w-[1600px] px-5 py-10 sm:px-8 lg:px-10">
-        {/* ---------- brand + app buttons ---------- */}
-        <div>
-          <p className="text-base text-gray-400 sm:text-lg">Shop Unlimited on</p>
+  const f = useFooter();
 
+  // while the footer loads from the database, keep the space reserved
+  if (!f) {
+    return (
+      <footer
+        aria-hidden
+        className="min-h-[260px] w-full"
+        style={{ backgroundColor: DEFAULT_FOOTER.bgColor }}
+      />
+    );
+  }
+
+  const hasColumns = f.companyLinks.length > 0 || f.legalLinks.length > 0 || f.businessLinks.length > 0;
+  const hasContact = !!(f.company || f.cin || f.registeredAddress || f.corporateOffice || f.email);
+  const hasSocial = !!(f.facebookUrl || f.linkedinUrl);
+
+  const blocks: { key: string; node: React.ReactNode }[] = [];
+
+  /* ---------- brand + app buttons ---------- */
+  blocks.push({
+    key: "brand",
+    node: (
+      <div>
+        {f.introText && <p className="text-base text-gray-400 sm:text-lg">{f.introText}</p>}
+
+        {(f.brandName || f.brandShort) && (
           <div className="mt-3 flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-sm font-extrabold text-rose-600 sm:h-12 sm:w-12 sm:text-base">
-              {BRAND_SHORT}
-            </span>
-            <span className="text-3xl font-bold text-white sm:text-4xl">{BRAND_NAME}</span>
+            {f.brandShort && (
+              <span className="flex h-11 min-w-11 items-center justify-center rounded-xl bg-white px-1 text-sm font-extrabold text-rose-600 sm:h-12 sm:min-w-12 sm:text-base">
+                {f.brandShort}
+              </span>
+            )}
+            {f.brandName && <span className="text-3xl font-bold text-white sm:text-4xl">{f.brandName}</span>}
           </div>
+        )}
 
-          <p className="mt-3 text-base text-gray-400 sm:text-lg">{TAGLINE}</p>
+        {f.tagline && <p className="mt-3 text-base text-gray-400 sm:text-lg">{f.tagline}</p>}
 
+        {f.showAppButtons && (f.playStoreUrl || f.appStoreUrl) && (
           <div className="mt-6 flex flex-wrap gap-3 sm:gap-4">
-            <StoreButton href={PLAY_STORE_URL} small="Get it on" big="Google Play" icon={<PlayIcon />} />
-            <StoreButton href={APP_STORE_URL} small="Download on the" big="App Store" icon={<AppleIcon />} />
+            {f.playStoreUrl && (
+              <StoreButton href={f.playStoreUrl} small="Get it on" big="Google Play" icon={<PlayIcon />} />
+            )}
+            {f.appStoreUrl && (
+              <StoreButton href={f.appStoreUrl} small="Download on the" big="App Store" icon={<AppleIcon />} />
+            )}
           </div>
-        </div>
+        )}
+      </div>
+    ),
+  });
 
-        <hr className="my-8 border-white/10 sm:my-10" />
-
-        {/* ---------- Company / Legal / Our Businesses ---------- */}
+  /* ---------- Company / Legal / Our Businesses ---------- */
+  if (hasColumns) {
+    blocks.push({
+      key: "columns",
+      node: (
         <div className="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-3">
-          <LinkColumn title="Company" links={companyLinks} />
-          <LinkColumn title="Legal" links={legalLinks} />
-          <LinkColumn title="Our Businesses" links={businessLinks} className="col-span-2 md:col-span-1" />
+          {f.companyLinks.length > 0 && <LinkColumn title={f.companyTitle} links={f.companyLinks} />}
+          {f.legalLinks.length > 0 && <LinkColumn title={f.legalTitle} links={f.legalLinks} />}
+          {f.businessLinks.length > 0 && (
+            <LinkColumn title={f.businessTitle} links={f.businessLinks} className="col-span-2 md:col-span-1" />
+          )}
         </div>
+      ),
+    });
+  }
 
-        <hr className="my-8 border-white/10 sm:my-10" />
-
-        {/* ---------- Shop by City ---------- */}
+  /* ---------- Shop by City ---------- */
+  if (f.showCities && f.cities.length > 0) {
+    blocks.push({
+      key: "cities",
+      node: (
         <section aria-labelledby="shop-by-city">
-          <h3 id="shop-by-city" className="text-lg font-semibold text-white sm:text-xl">
-            Shop by City
-          </h3>
-          <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-3 text-[15px] sm:text-base">
-            {cities.map((city) => (
+          {f.citiesTitle && (
+            <h3 id="shop-by-city" className="text-lg font-semibold text-white sm:text-xl">
+              {f.citiesTitle}
+            </h3>
+          )}
+          <ul className={`${f.citiesTitle ? "mt-5" : ""} flex flex-wrap gap-x-5 gap-y-3 text-[15px] sm:text-base`}>
+            {f.cities.map((city) => (
               <li key={city}>
                 <Link href={`/city/${slugify(city)}`} className={linkClass}>
                   {city}
@@ -157,88 +175,135 @@ export default function Footer() {
             ))}
           </ul>
         </section>
+      ),
+    });
+  }
 
-        <hr className="my-8 border-white/10 sm:my-10" />
-
-        {/* ---------- Shop by Category ---------- */}
+  /* ---------- Shop by Category ---------- */
+  if (f.showCategories && f.categories.length > 0) {
+    blocks.push({
+      key: "categories",
+      node: (
         <section aria-labelledby="shop-by-category">
-          <h3 id="shop-by-category" className="text-lg font-semibold text-white sm:text-xl">
-            Shop by Category
-          </h3>
+          {f.categoriesTitle && (
+            <h3 id="shop-by-category" className="text-lg font-semibold text-white sm:text-xl">
+              {f.categoriesTitle}
+            </h3>
+          )}
 
-          <div className="mt-6 flex flex-col gap-6">
-            {footerCategories.map((cat) => (
+          <div className={`${f.categoriesTitle ? "mt-6" : ""} flex flex-col gap-6`}>
+            {f.categories.map((cat) => (
               <div key={cat.title}>
                 <h4 className="text-[15px] font-semibold text-gray-200 sm:text-base">
                   <Link href={`/category/${slugify(cat.title)}`} className="hover:text-white">
                     {cat.title}
                   </Link>
                 </h4>
-                <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-3 text-[14px] sm:text-base">
-                  {cat.links.map((sub) => (
-                    <li key={sub}>
-                      <Link
-                        href={`/category/${slugify(cat.title)}/${slugify(sub)}`}
-                        className={linkClass}
-                      >
-                        {sub}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+                {cat.links.length > 0 && (
+                  <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-3 text-[14px] sm:text-base">
+                    {cat.links.map((sub) => (
+                      <li key={sub}>
+                        <Link href={`/category/${slugify(cat.title)}/${slugify(sub)}`} className={linkClass}>
+                          {sub}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             ))}
           </div>
         </section>
+      ),
+    });
+  }
 
-        <hr className="my-8 border-white/10 sm:my-10" />
-
-        {/* ---------- Contact Us ---------- */}
+  /* ---------- Contact Us ---------- */
+  if (hasContact) {
+    blocks.push({
+      key: "contact",
+      node: (
         <section aria-labelledby="contact-us">
-          <h3 id="contact-us" className="text-lg font-semibold text-white sm:text-xl">
-            Contact Us
-          </h3>
+          {f.contactTitle && (
+            <h3 id="contact-us" className="text-lg font-semibold text-white sm:text-xl">
+              {f.contactTitle}
+            </h3>
+          )}
 
-          <div className="mt-5 flex flex-col gap-3 text-sm leading-relaxed sm:gap-4 sm:text-base">
-            <p className="font-medium text-gray-200">{CONTACT.company}</p>
-            <p className="break-words text-gray-400">CIN: {CONTACT.cin}</p>
-            <p className="text-gray-400">Registered Address: {CONTACT.registeredAddress}</p>
-            <p className="text-gray-400">Corporate office: {CONTACT.corporateOffice}</p>
-            <p className="break-all text-gray-400 sm:break-normal">
-              Email:{" "}
-              <a
-                href={`mailto:${CONTACT.email}`}
-                className="text-white underline underline-offset-2 hover:text-gray-200"
-              >
-                {CONTACT.email}
-              </a>
-            </p>
+          <div
+            className={`${f.contactTitle ? "mt-5" : ""} flex flex-col gap-3 text-sm leading-relaxed sm:gap-4 sm:text-base`}
+          >
+            {f.company && <p className="font-medium text-gray-200">{f.company}</p>}
+            {f.cin && <p className="break-words text-gray-400">CIN: {f.cin}</p>}
+            {f.registeredAddress && <p className="text-gray-400">Registered Address: {f.registeredAddress}</p>}
+            {f.corporateOffice && <p className="text-gray-400">Corporate office: {f.corporateOffice}</p>}
+            {f.email && (
+              <p className="break-all text-gray-400 sm:break-normal">
+                Email:{" "}
+                <a
+                  href={`mailto:${f.email}`}
+                  className="text-white underline underline-offset-2 hover:text-gray-200"
+                >
+                  {f.email}
+                </a>
+              </p>
+            )}
           </div>
         </section>
+      ),
+    });
+  }
 
-        <hr className="my-8 border-white/10 sm:my-10" />
-
-        {/* ---------- Social icons ---------- */}
+  /* ---------- Social icons ---------- */
+  if (hasSocial) {
+    blocks.push({
+      key: "social",
+      node: (
         <div className="flex items-center gap-6">
-          <a
-            href={FACEBOOK_URL}
-            aria-label="Facebook"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="h-10 w-10 text-gray-400 transition-colors hover:text-white sm:h-12 sm:w-12"
-          >
-            <FacebookIcon />
-          </a>
-          <a
-            href={LINKEDIN_URL}
-            aria-label="LinkedIn"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="h-10 w-10 text-gray-400 transition-colors hover:text-white sm:h-12 sm:w-12"
-          >
-            <LinkedInIcon />
-          </a>
+          {f.facebookUrl && (
+            <a
+              href={f.facebookUrl}
+              aria-label="Facebook"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-10 w-10 text-gray-400 transition-colors hover:text-white sm:h-12 sm:w-12"
+            >
+              <FacebookIcon />
+            </a>
+          )}
+          {f.linkedinUrl && (
+            <a
+              href={f.linkedinUrl}
+              aria-label="LinkedIn"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-10 w-10 text-gray-400 transition-colors hover:text-white sm:h-12 sm:w-12"
+            >
+              <LinkedInIcon />
+            </a>
+          )}
         </div>
+      ),
+    });
+  }
+
+  /* ---------- bottom line ---------- */
+  if (f.copyright) {
+    blocks.push({
+      key: "copyright",
+      node: <p className="text-sm text-gray-500">{f.copyright}</p>,
+    });
+  }
+
+  return (
+    <footer className="w-full text-gray-400" style={{ backgroundColor: f.bgColor }}>
+      <div className="mx-auto w-full max-w-[1600px] px-5 py-10 sm:px-8 lg:px-10">
+        {blocks.map((b, i) => (
+          <Fragment key={b.key}>
+            {i > 0 && <hr className="my-8 border-white/10 sm:my-10" />}
+            {b.node}
+          </Fragment>
+        ))}
       </div>
     </footer>
   );
