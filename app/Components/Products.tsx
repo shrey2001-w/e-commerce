@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ProductCard from "./ProductCard";
 import CategoryCircles from "./CategoryCircles";
 import { categories, type Category } from "../data/products";
@@ -24,7 +24,7 @@ function CategorySection({ category, bandClass }: { category: Category; bandClas
   return (
     <section
       id={category.id}
-      className={`scroll-mt-24 rounded-3xl px-4 py-6 sm:px-6 ${bandClass}`}
+      className={`scroll-mt-[calc(var(--header-h,170px)_+_72px)] rounded-3xl px-4 py-6 sm:px-6 ${bandClass}`}
     >
       <div className="mb-5 flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-gray-900 sm:text-2xl lg:text-3xl">
@@ -83,6 +83,23 @@ export default function Products() {
   const { user } = useUser();
   const [active, setActive] = useState(categories[0].id);
 
+  // highlight the tab of the section currently in view while scrolling
+  useEffect(() => {
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) setActive(e.target.id);
+        });
+      },
+      { rootMargin: "-35% 0px -60% 0px" }
+    );
+    categories.forEach((c) => {
+      const el = document.getElementById(c.id);
+      if (el) obs.observe(el);
+    });
+    return () => obs.disconnect();
+  }, []);
+
   const goTo = (id: string) => {
     setActive(id);
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -94,10 +111,10 @@ export default function Products() {
         /* logged in: round category icons */
         <CategoryCircles categories={categories} onSelect={goTo} />
       ) : (
-        /* logged out: sticky category tabs */
+        /* logged out: sticky category tabs (sit right under the sticky header) */
         <nav
           aria-label="Product categories"
-          className="sticky top-0 z-30 -mx-3 border-b border-gray-100 bg-white/95 px-3 py-3 backdrop-blur sm:-mx-6 sm:px-6"
+          className="sticky top-[var(--header-h,170px)] z-30 -mx-3 border-b border-gray-100 bg-white px-3 py-3 sm:-mx-6 sm:px-6"
         >
           <ul className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {categories.map((c) => (

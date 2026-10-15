@@ -4,6 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import type { Product } from "../data/products";
 import { useCart } from "../lib/cart";
+import { useUser, refreshUser } from "../lib/user";
+import LoginModal from "./LoginModal";
+import SignupModal from "./SignupModal";
 
 type Props = {
   product: Product;
@@ -27,7 +30,10 @@ function Star() {
 
 export default function ProductCard({ product, fallbackEmoji = "🛍️", fluid }: Props) {
   const { items, addItem, increase, decrease } = useCart();
+  const { user } = useUser();
   const [imgFailed, setImgFailed] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [showSignup, setShowSignup] = useState(false);
 
   // quantity comes from the shared cart, so every card stays in sync with the cart drawer
   const qty = items.find((i) => i.id === product.id)?.qty ?? 0;
@@ -35,6 +41,41 @@ export default function ProductCard({ product, fallbackEmoji = "🛍️", fluid 
   const saved = product.mrp - product.price;
   const percent = Math.round((saved / product.mrp) * 100);
   const badgeAmount = product.badgeInRupees ? inr(saved) : `${percent}%`;
+
+  // logged out -> open login modal instead of adding
+  const handleAdd = () => {
+    if (!user) {
+      setShowLogin(true);
+      return;
+    }
+    addItem(product);
+  };
+
+  const handleIncrease = () => {
+    if (!user) {
+      setShowLogin(true);
+      return;
+    }
+    increase(product.id);
+  };
+
+  const openLogin = () => {
+    setShowSignup(false);
+    setShowLogin(true);
+  };
+
+  const openSignup = () => {
+    setShowLogin(false);
+    setShowSignup(true);
+  };
+
+  // after login/signup, add the product the user originally tried to add
+  const afterAuth = () => {
+    refreshUser();
+    setShowLogin(false);
+    setShowSignup(false);
+    if (qty === 0) addItem(product);
+  };
 
   return (
     <article
@@ -130,7 +171,7 @@ export default function ProductCard({ product, fallbackEmoji = "🛍️", fluid 
           {qty === 0 ? (
             <button
               type="button"
-              onClick={() => addItem(product)}
+              onClick={handleAdd}
               className="relative z-10 flex shrink-0 flex-col items-center justify-center rounded-lg border-2 border-red-600 bg-white px-4 py-1.5 font-bold text-red-600 transition hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:px-6 sm:py-2"
             >
               <span className="text-sm leading-tight sm:text-base">ADD</span>
@@ -154,7 +195,7 @@ export default function ProductCard({ product, fallbackEmoji = "🛍️", fluid 
               <button
                 type="button"
                 aria-label="Increase quantity"
-                onClick={() => increase(product.id)}
+                onClick={handleIncrease}
                 className="px-3 py-2 text-lg font-bold leading-none hover:bg-red-700"
               >
                 +
@@ -163,6 +204,21 @@ export default function ProductCard({ product, fallbackEmoji = "🛍️", fluid 
           )}
         </div>
       </div>
+
+      {/* login / signup modals (only mounted when needed) */}
+      {showLogin && (
+        <LoginModal
+          onClose={() => setShowLogin(false)}
+          onSuccess={afterAuth}
+          onSwitchToSignup={openSignup}
+        />
+      )}
+      <SignupModal
+        open={showSignup}
+        onClose={() => setShowSignup(false)}
+        onSuccess={afterAuth}
+        onSwitchToLogin={openLogin}
+      />
     </article>
   );
 }

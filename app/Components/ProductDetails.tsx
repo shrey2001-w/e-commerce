@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import type { Product } from "../data/products";
 import ExpressBadge from "./ExpressBadge";
+import LoginModal from "./LoginModal";
+import SignupModal from "./SignupModal";
+import { useUser, refreshUser } from "../lib/user";
+import { useCart } from "../lib/cart";
 
 type Props = {
   product: Product;
@@ -101,8 +105,45 @@ export default function ProductDetails({ product, categoryId, categoryName, emoj
   const [failed, setFailed] = useState<Record<string, boolean>>({});
   const [zoom, setZoom] = useState(false);
 
-  const [qty, setQty] = useState(0);
   const [descOpen, setDescOpen] = useState(true);
+
+  /* ---- shared cart (same cart as the home page cards, drawer and /cart) ---- */
+  const { items, addItem, increase, decrease } = useCart();
+  const qty = items.find((i) => i.id === product.id)?.qty ?? 0;
+
+  /* ---- login gate ---- */
+  const { user } = useUser();
+  const [showLogin, setShowLogin] = useState(false);
+  const [showSignup, setShowSignup] = useState(false);
+
+  // logged out -> open the login modal, nothing is added
+  const handleAdd = () => {
+    if (!user) {
+      setShowLogin(true);
+      return;
+    }
+    if (qty === 0) addItem(product);
+    else increase(product.id);
+  };
+
+  const handleDecrease = () => decrease(product.id);
+
+  const openLogin = () => {
+    setShowSignup(false);
+    setShowLogin(true);
+  };
+  const openSignup = () => {
+    setShowLogin(false);
+    setShowSignup(true);
+  };
+
+  // after login/signup, add the product the user originally tried to add
+  const afterAuth = () => {
+    refreshUser();
+    setShowLogin(false);
+    setShowSignup(false);
+    if (qty === 0) addItem(product);
+  };
 
   const description =
     product.description ??
@@ -293,7 +334,7 @@ export default function ProductDetails({ product, categoryId, categoryName, emoj
             {qty === 0 ? (
               <button
                 type="button"
-                onClick={() => setQty(1)}
+                onClick={handleAdd}
                 className="flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-red-600 text-lg font-medium text-white transition hover:bg-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:h-16 sm:text-2xl"
               >
                 <CartIcon className="h-7 w-7 sm:h-8 sm:w-8" />
@@ -304,7 +345,7 @@ export default function ProductDetails({ product, categoryId, categoryName, emoj
                 <button
                   type="button"
                   aria-label="Decrease quantity"
-                  onClick={() => setQty((q) => q - 1)}
+                  onClick={handleDecrease}
                   className="h-11 w-14 rounded-xl text-3xl leading-none hover:bg-red-700"
                 >
                   −
@@ -313,7 +354,7 @@ export default function ProductDetails({ product, categoryId, categoryName, emoj
                 <button
                   type="button"
                   aria-label="Increase quantity"
-                  onClick={() => setQty((q) => q + 1)}
+                  onClick={handleAdd}
                   className="h-11 w-14 rounded-xl text-3xl leading-none hover:bg-red-700"
                 >
                   +
@@ -445,6 +486,21 @@ export default function ProductDetails({ product, categoryId, categoryName, emoj
           </div>
         </div>
       )}
+
+      {/* ---------------- login / signup modals ---------------- */}
+      {showLogin && (
+        <LoginModal
+          onClose={() => setShowLogin(false)}
+          onSuccess={afterAuth}
+          onSwitchToSignup={openSignup}
+        />
+      )}
+      <SignupModal
+        open={showSignup}
+        onClose={() => setShowSignup(false)}
+        onSuccess={afterAuth}
+        onSwitchToLogin={openLogin}
+      />
     </div>
   );
 }

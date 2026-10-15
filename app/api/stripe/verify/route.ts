@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
-import { completeStripeOrder } from "@/app/lib/stripeOrders";
+import { NextResponse, connection } from "next/server";
+import { completeStripeOrder } from "../../../lib/stripeOrders";
 
 export async function GET(req: Request) {
+  await connection(); // always run at request time, never during build
   try {
     const sessionId = new URL(req.url).searchParams.get("session_id");
     if (!sessionId) return NextResponse.json({ paid: false }, { status: 400 });

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Bungee } from "next/font/google";
 import SignupModal from "./SignupModal";
 import LoginModal from "./LoginModal";
@@ -9,6 +10,7 @@ import { useCart } from "../lib/cart";
 import { useUser, refreshUser, clearUser } from "../lib/user";
 import AddressModal from "./AddressModal";
 import { deliveryLabel } from "../lib/delivery";
+import { categories } from "../data/products";
 
 // Chunky display font that matches the "CITYMALL" wordmark
 const bungee = Bungee({ weight: "400", subsets: ["latin"] });
@@ -118,16 +120,130 @@ function CrownAvatar({ className = "" }: { className?: string }) {
   );
 }
 
+/* ---------- Search helpers ---------- */
+
+const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+
+// every product with its category emoji, built once
+const searchIndex = categories.flatMap((c) =>
+  c.products.map((p) => ({
+    product: p,
+    emoji: c.emoji,
+    hay: `${p.name} ${p.brand ?? ""} ${c.name}`.toLowerCase(),
+  }))
+);
+
+function SearchThumb({ src, emoji }: { src: string; emoji: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100 text-2xl">
+      {failed || !src ? (
+        <span aria-hidden>{emoji}</span>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" className="h-full w-full object-contain" onError={() => setFailed(true)} />
+      )}
+    </span>
+  );
+}
+
 /* ---------- Header ---------- */
 
 export default function Header({ compact = false }: { compact?: boolean }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
-  const [city] = useState("Gurgaon");
+  const [city] = useState("Kanpur");
   const [showSignup, setShowSignup] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const { user } = useUser();
   const [showAddress, setShowAddress] = useState(false);
   const { count } = useCart();
+
+  /* publish the header's real height as a CSS variable so sticky elements sit below it */
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const set = () =>
+      document.documentElement.style.setProperty("--header-h", `${el.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  /* categories dropdown */
+  const [showCats, setShowCats] = useState(false);
+  const catsRef = useRef<HTMLDivElement>(null);
+
+  // close on outside click or Esc
+  useEffect(() => {
+    if (!showCats) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (catsRef.current && !catsRef.current.contains(e.target as Node)) setShowCats(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowCats(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [showCats]);
+
+  /* live search */
+  const [showResults, setShowResults] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(-1);
+
+  const results = useMemo(() => {
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) return [];
+    return searchIndex.filter(({ hay }) => terms.every((t) => hay.includes(t))).slice(0, 8);
+  }, [query]);
+
+  // close the results when clicking outside the search box (works for both the desktop and mobile copy)
+  useEffect(() => {
+    if (!showResults) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (!(e.target as Element).closest("[data-search-root]")) setShowResults(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+    };
+  }, [showResults]);
+
+  const openProduct = (id: string) => {
+    setShowResults(false);
+    setQuery("");
+    setActiveIdx(-1);
+    router.push(`/product/${id}`);
+  };
+
+  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (results.length === 0) return;
+    openProduct(results[activeIdx >= 0 ? activeIdx : 0].product.id);
+  };
+
+  const handleSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      setShowResults(false);
+    } else if (e.key === "ArrowDown" && results.length) {
+      e.preventDefault();
+      setShowResults(true);
+      setActiveIdx((i) => (i + 1) % results.length);
+    } else if (e.key === "ArrowUp" && results.length) {
+      e.preventDefault();
+      setActiveIdx((i) => (i <= 0 ? results.length - 1 : i - 1));
+    }
+  };
 
   const handleLogout = async () => {
     await fetch("/api/logout", { method: "POST" });
@@ -144,37 +260,89 @@ export default function Header({ compact = false }: { compact?: boolean }) {
     setShowSignup(true);
   };
 
-  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-    // TODO: router.push(`/search?q=${encodeURIComponent(query)}`)
-    console.log("search:", query);
-  };
-
-  const searchForm = (
-    <form onSubmit={handleSearch} role="search" className="w-full">
-      <label htmlFor="header-search" className="sr-only">
+  // rendered twice (desktop row + mobile row), so ids get a suffix
+  const renderSearch = (suffix: string) => (
+    <form
+      onSubmit={handleSearch}
+      role="search"
+      data-search-root
+      className="relative w-full"
+    >
+      <label htmlFor={`header-search-${suffix}`} className="sr-only">
         Search for products
       </label>
       <div className="flex h-12 w-full items-center gap-3 rounded-xl border border-gray-300 bg-[#F7F7F7] px-4 transition focus-within:border-gray-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-red-600/20 lg:h-[52px]">
         <SearchIcon className="h-5 w-5 shrink-0 text-gray-500" />
         <input
-          id="header-search"
+          id={`header-search-${suffix}`}
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          autoComplete="off"
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setShowResults(true);
+            setActiveIdx(-1);
+          }}
+          onFocus={() => query.trim() && setShowResults(true)}
+          onKeyDown={handleSearchKey}
           placeholder="Search for products…"
           className="w-full bg-transparent text-base text-gray-800 placeholder:text-gray-400 focus:outline-none"
         />
       </div>
+
+      {showResults && query.trim() && (
+        <div className="absolute inset-x-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+          {results.length === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-gray-500">
+              No products found for “{query.trim()}”
+            </p>
+          ) : (
+            <ul role="listbox" className="max-h-[70vh] overflow-y-auto py-1">
+              {results.map(({ product: p, emoji }, i) => (
+                <li key={p.id} role="option" aria-selected={i === activeIdx}>
+                  <Link
+                    href={`/product/${p.id}`}
+                    onClick={() => {
+                      setShowResults(false);
+                      setQuery("");
+                      setActiveIdx(-1);
+                    }}
+                    onMouseEnter={() => setActiveIdx(i)}
+                    className={`flex items-center gap-3 px-4 py-2.5 transition ${
+                      i === activeIdx ? "bg-red-50" : "hover:bg-gray-50"
+                    }`}
+                  >
+                    <SearchThumb src={p.image} emoji={emoji} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-medium text-gray-900">
+                        {p.name}
+                      </span>
+                      <span className="block truncate text-xs text-gray-500">
+                        {[p.brand, p.quantity].filter(Boolean).join(" · ")}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-sm font-bold text-gray-900">{inr(p.price)}</span>
+                      <span className="block text-xs text-gray-400 line-through">{inr(p.mrp)}</span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </form>
   );
 
   return (
-    <header className="w-full border-t-4 border-t-[#1a1b2e] bg-white">
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-40 w-full border-t-4 border-t-[#1a1b2e] bg-white shadow-sm"
+    >
       <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8">
         {/* ===== Row 1: logo · search · categories · orders · cart ===== */}
-        <div className="flex items-center justify-between gap-4 py-3 lg:gap-8 lg:py-4">
+        <div className="relative flex items-center justify-between gap-4 py-3 lg:gap-8 lg:py-4">
           {/* Logo */}
           <Link href="/" aria-label="CityMall home" className="flex shrink-0 items-center gap-3 sm:gap-4">
             <LogoMark className="h-8 w-7 sm:h-10 sm:w-8" />
@@ -186,14 +354,57 @@ export default function Header({ compact = false }: { compact?: boolean }) {
           </Link>
 
           {/* Search – inline on large screens */}
-          <div className="hidden max-w-[700px] flex-1 md:block">{searchForm}</div>
+          <div className="hidden max-w-[700px] flex-1 md:block">{renderSearch("desktop")}</div>
 
           {/* Right actions */}
           <nav aria-label="Primary" className="flex shrink-0 items-center gap-4 sm:gap-6 lg:gap-10">
-            <Link href="/categories" className="flex items-center gap-2.5 text-[17px] text-gray-700 hover:text-red-600" aria-label="Categories">
-              <CategoriesIcon className="h-5 w-5" />
-              <span className="hidden lg:inline">Categories</span>
-            </Link>
+            {/* Categories dropdown */}
+            <div ref={catsRef} className="sm:relative">
+              <button
+                type="button"
+                onClick={() => setShowCats((o) => !o)}
+                aria-haspopup="true"
+                aria-expanded={showCats}
+                aria-controls="categories-menu"
+                aria-label="Categories"
+                className={`flex items-center gap-2.5 text-[17px] hover:text-red-600 ${
+                  showCats ? "text-red-600" : "text-gray-700"
+                }`}
+              >
+                <CategoriesIcon className="h-5 w-5" />
+                <span className="hidden lg:inline">Categories</span>
+                <ChevronDown
+                  className={`hidden h-4 w-4 transition-transform lg:block ${showCats ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {showCats && (
+                <div
+                  id="categories-menu"
+                  className="absolute left-4 right-4 top-full z-50 mt-1 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl sm:left-auto sm:right-0 sm:mt-3 sm:w-80"
+                >
+                  <p className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-900">
+                    Shop by Category
+                  </p>
+                  <ul className="max-h-[60vh] overflow-y-auto py-1">
+                    {categories.map((c) => (
+                      <li key={c.id}>
+                        <Link
+                          href={`/#${c.id}`}
+                          onClick={() => setShowCats(false)}
+                          className="flex items-center gap-3 px-4 py-2.5 text-[15px] text-gray-800 transition hover:bg-red-50 hover:text-red-600"
+                        >
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-lg" aria-hidden>
+                            {c.emoji}
+                          </span>
+                          {c.name}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
 
             <Link href="/orders" className="flex items-center gap-2.5 text-[17px] text-gray-700 hover:text-red-600" aria-label="Orders">
               <OrdersIcon className="h-6 w-6" />
@@ -216,7 +427,7 @@ export default function Header({ compact = false }: { compact?: boolean }) {
         </div>
 
         {/* Search – full width row on small screens */}
-        <div className="pb-3 md:hidden">{searchForm}</div>
+        <div className="pb-3 md:hidden">{renderSearch("mobile")}</div>
       </div>
 
       {/* ===== Row 2: delivery / location · auth buttons ===== */}
@@ -252,18 +463,18 @@ export default function Header({ compact = false }: { compact?: boolean }) {
               </span>
             </button>
           ) : (
-            /* logged out: crown avatar + city */
-            <button
-              type="button"
-              className="flex items-center gap-3 rounded-md py-1 text-[15px] text-gray-600 hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40"
-              aria-haspopup="listbox"
-            >
-              <CrownAvatar className="h-12 w-12 sm:h-[60px] sm:w-[60px]" />
-              <span className="flex items-center gap-1.5">
-                {city}
-                <ChevronDown className="h-4 w-4" />
+            /* logged out: crown avatar + city + availability message */
+            <div className="flex min-w-0 items-center gap-3 py-1">
+              <CrownAvatar className="h-12 w-12 shrink-0 sm:h-[60px] sm:w-[60px]" />
+              <span className="min-w-0">
+                <span className="block text-base font-semibold text-gray-900 sm:text-xl">
+                  {city}
+                </span>
+                <span className="block text-xs text-red-600 sm:text-sm">
+                  Available only for {city} location
+                </span>
               </span>
-            </button>
+            </div>
           )}
 
           {user ? (
